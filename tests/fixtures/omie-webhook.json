@@ -1,0 +1,41 @@
+{
+  "messageId": "a2825659-d7f7-41de-b491-7db8fc6f5788",
+  "topic": "Financas.ContaPagar.BaixaRealizada",
+  "event": [
+    {
+      "codigo_baixa": 7426315795,
+      "codigo_baixa_integracao": "",
+      "codigo_cliente_fornecedor": 6924131929,
+      "codigo_conta_corrente": 6923360862,
+      "conta_a_pagar": [
+        {
+          "codigo_lancamento_integracao": "",
+          "codigo_lancamento_omie": 7426315775,
+          "data_emissao": "2026-05-11T00:00:00-03:00",
+          "data_entrada": "2026-05-11T00:00:00-03:00",
+          "data_vencimento": "2026-05-11T00:00:00-03:00",
+          "numero_documento": "374751",
+          "numero_documento_fiscal": "",
+          "numero_parcela": "001/001",
+          "valor_documento": 3162.5
+        }
+      ],
+      "data": "2026-05-11T00:00:00-03:00",
+      "data_cred": "2026-05-11T00:00:00-03:00",
+      "desconto": 0,
+      "juros": 0,
+      "multa": 0,
+      "observacao": "Pagamento realizado a partir da importação do extrato.",
+      "tarifa": 0,
+      "valor": 3162.5
+    }
+  ],
+  "author": {
+    "email": "cristiane.amaral@finance.insiderstore.com.br",
+    "name": "Cristiane Amaral",
+    "userId": 859334
+  },
+  "appKey": "4551733781595",
+  "appHash": "insider-4hs6i511",
+  "origin": "omie-connect-2.0"
+}
