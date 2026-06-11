@@ -11,9 +11,9 @@ export type IntegrationStatus =
   | "erro_baixa_mxm";
 
 export type Pagamento =
-  | { forma_pagamento: "pix"; chave: string }
-  | { forma_pagamento: "boleto"; codigo: string }
-  | { forma_pagamento: "transferencia"; agencia: string; conta: string; banco: string };
+  | { forma_pagamento: "Pix"; chave: string }
+  | { forma_pagamento: "Boleto"; codigo: string }
+  | { forma_pagamento: "Transferência Bancária"; agencia: string; conta: string; banco: string };
 
 export type PaymentIntegration = {
   mxm_id: string;

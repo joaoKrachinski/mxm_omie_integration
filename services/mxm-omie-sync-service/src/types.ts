@@ -17,3 +17,15 @@ export type StatusResult = {
   total: number;
   por_status: Record<string, number>;
 };
+
+export type ListDocumentsInput = {
+  status?: string;
+  desde?: string;
+  limite?: number | string;
+};
+
+export type DocumentsResult = {
+  total: number;
+  limite: number;
+  documentos: PaymentIntegration[];
+};

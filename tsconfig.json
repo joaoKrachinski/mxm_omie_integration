@@ -14,11 +14,13 @@
     "outDir": "./dist",
     "paths": {
       "@shared/*": ["./shared/*"],
-      "@adapters/*": ["./adapters/*"]
+      "@adapters/*": ["./adapters/*"],
+      "@database": ["./database/index.ts"],
+      "@database/*": ["./database/*"]
     },
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["shared/**/*", "adapters/**/*", "services/**/*", "tests/**/*"],
+  "include": ["shared/**/*", "adapters/**/*", "database/**/*", "services/**/*", "tests/**/*", "diagnose.ts"],
   "exclude": ["node_modules", "dist"]
 }

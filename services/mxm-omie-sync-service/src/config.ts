@@ -23,7 +23,9 @@ export function loadConfig() {
 
     mxm: {
       baseUrl: required("MXM_BASE_URL"),
-      authToken: required("MXM_AUTH_TOKEN"),
+      username: required("MXM_USERNAME"),
+      password: required("MXM_PASSWORD"),
+      environment: required("MXM_ENVIRONMENT"),
       syncWindowHours: parseInt(optional("SYNC_WINDOW_HOURS", "26"), 10),
     },
 

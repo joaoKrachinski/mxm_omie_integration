@@ -1,11 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import type { Db } from "mongodb";
 import type { Config } from "./config";
 import { makeHandlers } from "./handlers";
 
-export function registerRoutes(app: FastifyInstance, db: Db, config: Config): void {
+export function registerRoutes(app: FastifyInstance, config: Config): void {
   const { handleApproverJira, handleVerifyInvoiceJira, handleUpdateOmieJira, handleReprocess, handleHealth } =
-    makeHandlers(db, config);
+    makeHandlers(config);
 
   app.post("/approverJira", handleApproverJira);
   app.post("/verifyInvoiceJira", handleVerifyInvoiceJira);

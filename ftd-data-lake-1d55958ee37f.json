@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "ftd-data-lake",
+  "private_key_id": "1d55958ee37f568a7d2b031a8d3cbb168f5b30aa",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQCcgOtPtxod1dKZ\n+tYb3xVI2W2gel1lj4qiEFJt+J/w3p5tUaP5IrzhFPOZAjakHoOp+jundBrmClM0\nYHv0Qy7+Hkry1GtwX3NpwQkxFJdh+bJJLc3CA9zWIF3lul7yi6/koolX6KW9MqGu\nrWNof9CucTmsacS43JnHSVc5uns7uPnvKZF3ICHTvvb59YWRe8d5GpNA3AuZKssG\nopTNUUYwgstwLfgj1VB+LABssiyio2/JKKuoVkKHoZb+ctwQ79oN8CBifm9rVLLR\n1bopjgh86nJ6Rxqpuo1E7Anq+/2KklMIVxSzXvE1ttPvrfrZFq9wTNWwbeeOJL8p\nHf7SAohbAgMBAAECggEAPOlELGNkS8Zj0EA7Qt/BZfgR3cqiPRvv5gGaQ2jnvxS1\n7nA+9IEbqDLCWIPvBlNGBUr6GsNqkKvmFFWVCM15JbhejUI1iqfrwHY8AJk2DhDj\n3e1wzpk4QzKXuQifWaEaVU8ZS1il4Qwqt1SOgyZz7uDshHkp8pURWOnng/VbbzOE\nYmBRxbZBmciHvKQulsUXpXV6quilqha7SwTTgy64ccyG7V30K3Rl+udz9kDAGQ0s\nSWwbpHxCnTnCQhRZbp/nWEcWllYahNqXNcn0rbDJg+3T5wuZk2QSc0muLDkKzmc/\n1kadmk2FzcC+F9//0XJfNOmMexmB9PA7QUQUmSWQ2QKBgQDMoSUiQLGYAA2W459Q\nD+6nVRqHptjUmdh27Hb6ZbH0+uHN3kB7V3kD505ert3UVD0w08UF5fe9GUvAYK7Z\nG1kUm31o7vYXWANxmf9YT0ox3J3bsASUXB1T5jKrm4F/UYTqtBqlfz3pQywhY+Re\ndpH+7r7C0MYCem3hRVuHgMI6hwKBgQDDyuJHYzv4uClbIzbfdDS68o8vHeN0JvOc\nUSs/HPBOH4JAZ2T0xSDrSvc3UV5K5kdHsb/kVzX+NHOICEvuIkm4v8ZSWYqQRSCT\nyMW0/PdmDM9YgUy+29WXKDmMqOlGdLA/J3qcigURgmiyCbvxvY6hCXsw8kibrQeH\nISjKBoxUjQKBgQC2H6JmNwAZUcrGhfawEk4NXkBLhaMsrXSse891EvftGzHHwczQ\nOk05vS/SM3650PPZNlH/6uqwwgfaw/I6xw1kuvNGZpBevHXsMOzD02YstLdG5QVe\nahGsL5DfjXsXLx3Gqt+gdnxK1P89BKQnsw5DwIfF6nyhjgen3MwW8PFtlwJ/JXmv\n1foogHK/d7JFzn9vmFjVDy+pWZIbDtB6dpoTZOCjDbC8oh0ZL/ApYW0xnyR0gESF\ndi87JmzjsCXmYq4tbi9GxnxdCUAx/BdxwDKrJ91L0qTtC5sIRuZsHYA3JkUvducX\nkN7aGX/cijdSwfKGWkx2R+gX/bQgvLycEg8uzQKBgErlSnJ0yOpEUFo4pt6U0BAg\nwuAGsU00fLDNmiTf3+7znhSk8XJ/bbJrEC9cBfLpvQ505X010LmqxLc5O2i0YvPK\nIXzG0nR3qWIRFthWgXVdYDa7gKw14uYpBxO2BwA6q6J8qkzc//WcJlVb9/DuDrPH\nzffF+gRRTugsSq6nvNny\n-----END PRIVATE KEY-----\n",
+  "client_email": "mxm-omie-project@ftd-data-lake.iam.gserviceaccount.com",
+  "client_id": "103534423375743008223",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/mxm-omie-project%40ftd-data-lake.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

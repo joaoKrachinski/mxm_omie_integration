@@ -1,0 +1,62 @@
+{
+  "issue": {
+    "self": "https://insiderstore.atlassian.net/rest/api/2/issue/261437",
+    "id": 261437,
+    "key": "issue_key",
+    "fields": {
+      "customfield_11645": "squad/foundation",
+      "customfield_12563": "fornecedores_finance",
+      "customfield_12562": "fornecedores_growth",
+      "customfield_12416": "fornecedores_influ",
+      "customfield_12425": "fornecedores_legal",
+      "customfield_12564": "fornecedores_operations",
+      "customfield_12566": "fornecedores_people",
+      "customfield_12565": "fornecedores_technology",
+      "customfield_12568": "tipo_do_titulo",
+      "customfield_12112": "numero_do_titulo",
+      "customfield_10184": "data_emissao(ISODate)",
+      "customfield_12140": "moeda_de_pagamento",
+      "customfield_10181": "valor(float ou string)",
+      "customfield_10183": "vencimento(ISODate)",
+      "customfield_10182": "metodo_de_pagamento",
+      "customfield_10186": "linha_digitavel_boleto",
+      "customfield_10180": "cnpj_do_fornecedor",
+      "customfield_10179": "nome_do_fornecedor",
+      "customfield_10178": "numero_do_titulo_producao",
+      "customfield_10214": "codigo_ntc",
+      "customfield_10195": "centro_de_custo",
+      "customfield_10196": "tipo_de_pagamento",
+      "customfield_10189": "agencia_bancaria",
+      "customfield_10190": "conta_bancaria",
+      "customfield_12243": "banco",
+      "status": {
+        "self": "https://insiderstore.atlassian.net/rest/api/2/status/1",
+        "description": "The work item is open and ready for the assignee to start work on it.",
+        "iconUrl": "https://insiderstore.atlassian.net/images/icons/statuses/open.png",
+        "name": "Open",
+        "id": 1,
+        "statusCategory": {
+          "self": "https://insiderstore.atlassian.net/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "New"
+        }
+      },
+      "creator": {
+        "self": "https://insiderstore.atlassian.net/rest/api/2/user?accountId=712020%3Abbe5c9cd-223f-4c5e-b275-74b17bf03bbf",
+        "accountId": "712020:bbe5c9cd-223f-4c5e-b275-74b17bf03bbf",
+        "avatarUrls": {
+          "48x48": "https://secure.gravatar.com/avatar/20793179ed260822dc9755180c495e81?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FJG-5.png",
+          "24x24": "https://secure.gravatar.com/avatar/20793179ed260822dc9755180c495e81?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FJG-5.png",
+          "16x16": "https://secure.gravatar.com/avatar/20793179ed260822dc9755180c495e81?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FJG-5.png",
+          "32x32": "https://secure.gravatar.com/avatar/20793179ed260822dc9755180c495e81?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FJG-5.png"
+        },
+        "displayName": "João Vinícius Krachinski de Andrade Gama",
+        "active": true,
+        "timeZone": "America/Sao_Paulo",
+        "accountType": "atlassian"
+      }
+    }
+  }
+}

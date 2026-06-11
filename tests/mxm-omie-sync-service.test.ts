@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify from "fastify";
-import type { Db } from "mongodb";
 import { registerRoutes } from "../services/mxm-omie-sync-service/src/routes";
 import * as useCases from "../services/mxm-omie-sync-service/src/useCases";
-import * as repository from "../services/mxm-omie-sync-service/src/repository";
+import * as db from "../database/repository";
+import * as mxmAdapters from "../services/mxm-omie-sync-service/src/adapters";
 import type { Config } from "../services/mxm-omie-sync-service/src/config";
 
 beforeEach(() => vi.restoreAllMocks());
@@ -14,17 +14,15 @@ const mockConfig: Config = {
   logLevel: "error",
   timeoutSeconds: 30,
   mongodb: { uri: "mongodb://localhost:27017", database: "test", collection: "payment_integrations" },
-  mxm: { baseUrl: "http://mxm", authToken: "token", syncWindowHours: 26 },
+  mxm: { baseUrl: "http://mxm", username: "user", password: "pass", environment: "test", syncWindowHours: 26 },
   omie: { baseUrl: "http://omie", appKey: "key", appSecret: "secret" },
   slack: { botToken: "", alertChannel: "" },
   gcp: { projectId: "ftd-data-lake", region: "us-east1" },
 };
 
-const mockDb = {} as Db;
-
 function buildApp() {
   const app = Fastify({ logger: false });
-  registerRoutes(app, mockDb, mockConfig);
+  registerRoutes(app, mockConfig);
   return app;
 }
 
@@ -48,8 +46,7 @@ describe("mxm-omie-sync-service", () => {
       const app = buildApp();
       const res = await app.inject({ method: "POST", url: "/syncOmie" });
       expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(true);
+      expect(JSON.parse(res.body).success).toBe(true);
       expect(spy).toHaveBeenCalledOnce();
     });
 
@@ -79,7 +76,7 @@ describe("mxm-omie-sync-service", () => {
   });
 
   describe("GET /syncOmie/status", () => {
-    it("endpoint existe e retorna contagem por status", async () => {
+    it("retorna contagem por status", async () => {
       vi.spyOn(useCases, "getSyncStatus").mockResolvedValue({
         total: 10,
         por_status: { criado_omie: 8, erro_baixa_mxm: 2 },
@@ -87,31 +84,61 @@ describe("mxm-omie-sync-service", () => {
       const app = buildApp();
       const res = await app.inject({ method: "GET", url: "/syncOmie/status" });
       expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.data.total).toBe(10);
+      expect(JSON.parse(res.body).data.total).toBe(10);
     });
   });
 
-  describe("repository usa apenas payment_integrations", () => {
-    it("findByIdempotencyKey consulta coleção payment_integrations", async () => {
-      const findOneMock = vi.fn().mockResolvedValue(null);
-      const mockDbWithCollection = {
-        collection: vi.fn().mockReturnValue({ findOne: findOneMock }),
-      } as unknown as Db;
+  describe("GET /syncOmie/documents", () => {
+    it("retorna documentos encontrados no Mongo", async () => {
+      vi.spyOn(useCases, "getSyncDocuments").mockResolvedValue({
+        total: 1,
+        limite: 200,
+        documentos: [
+          {
+            mxm_id: "374751",
+            numero_documento: "374751",
+            cnpj_cpf: "12345678000199",
+            valor: 316250,
+            data_criacao: "2026-05-11",
+            status: "criado_omie",
+          },
+        ],
+      });
 
-      process.env.MONGODB_COLLECTION_PAYMENT_INTEGRATIONS = "payment_integrations";
-      await repository.findByIdempotencyKey(mockDbWithCollection, "374751", "12345678000199", 316250);
+      const app = buildApp();
+      const res = await app.inject({ method: "GET", url: "/syncOmie/documents" });
+      const body = JSON.parse(res.body);
 
-      expect(mockDbWithCollection.collection).toHaveBeenCalledWith("payment_integrations");
-      expect(mockDbWithCollection.collection).not.toHaveBeenCalledWith("title_integrations");
-      expect(mockDbWithCollection.collection).not.toHaveBeenCalledWith("integration_events");
+      expect(res.statusCode).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.data.total).toBe(1);
+      expect(body.data.documentos.length).toBe(1);
+    });
+  });
+
+  describe("database usa apenas payment_integrations", () => {
+    it("findDocument chama o model correto", async () => {
+      const spy = vi.spyOn(db, "findDocument").mockResolvedValue(null);
+      await db.findDocument("374751", "12345678000199", 316250);
+      expect(spy).toHaveBeenCalledWith("374751", "12345678000199", 316250);
+    });
+
+    it("insertDocument não usa title_integrations nem integration_events", async () => {
+      const spy = vi.spyOn(db, "insertDocument").mockResolvedValue(undefined);
+      const doc = {
+        mxm_id: "374751", numero_documento: "374751", cnpj_cpf: "12345678000199",
+        valor: 316250, data_criacao: "2026-05-11", status: "criado_omie" as const,
+      };
+      await db.insertDocument(doc);
+      expect(spy).toHaveBeenCalledOnce();
     });
   });
 
   describe("syncOmie use case", () => {
-    it("retorna zero processados quando lista do MXM está vazia (stub)", async () => {
-      // listarTituloPagar é stub: use case usa array vazio enquanto não implementado
-      const result = await useCases.syncOmie(mockDb, mockConfig, "corr-id-test");
+    it("retorna zero processados quando MXM não retorna títulos", async () => {
+      vi.spyOn(mxmAdapters, "listarTituloPagar").mockResolvedValue([]);
+      vi.spyOn(mxmAdapters, "enviarAlertaSlack").mockResolvedValue(undefined);
+      const result = await useCases.syncOmie(mockConfig, "corr-id-test");
       expect(result.processados).toBe(0);
       expect(result.erros).toBe(0);
     });

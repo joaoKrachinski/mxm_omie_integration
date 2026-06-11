@@ -20,10 +20,10 @@ const LEVEL_LABEL: Record<LogLevel, string> = {
 };
 
 const LEVEL_COLOR: Record<LogLevel, string> = {
-  debug: "\x1b[34m",  // azul
-  info:  "\x1b[32m",  // verde
-  warn:  "\x1b[33m",  // amarelo
-  error: "\x1b[31m",  // vermelho
+  debug: "\x1b[34m",
+  info:  "\x1b[32m",
+  warn:  "\x1b[33m",
+  error: "\x1b[31m",
 };
 
 const RESET = "\x1b[0m";
@@ -46,14 +46,21 @@ function formatPretty(entry: LogEntry): string {
   const color  = LEVEL_COLOR[entry.level];
   const label  = LEVEL_LABEL[entry.level];
   const ctx    = entry.context ?? entry.service_name;
+  const serialize = (v: unknown): string => {
+    if (v === null) return "null";
+    if (v === undefined) return "undefined";
+    if (typeof v === "object") return JSON.stringify(v, null, 2);
+    return String(v);
+  };
+
   const extras = Object.entries(entry)
     .filter(([k]) => !["level", "service_name", "context", "message"].includes(k))
-    .map(([k, v]) => `${DIM}${k}=${RESET}${v}`)
-    .join(" ");
+    .map(([k, v]) => `${DIM}${k}=${RESET}${serialize(v)}`)
+    .join("  ");
 
   return (
     `${color}${BOLD}[${entry.service_name}]${RESET} ` +
-    `${DIM}${process.pid}  - ${formatDate()}${RESET}  ` +
+    `${DIM}${process.pid}  - ${formatDate()}${RESET}     ` +
     `${color}${BOLD}${label}${RESET} ` +
     `${color}[${ctx}]${RESET} ` +
     `${entry.message}` +
@@ -61,13 +68,17 @@ function formatPretty(entry: LogEntry): string {
   );
 }
 
+function isJsonMode(): boolean {
+  const env = process.env.NODE_ENV;
+  return env === "production" || env === "test";
+}
+
 function log(entry: LogEntry): void {
   const minLevel = (process.env.LOG_LEVEL ?? "info") as LogLevel;
   const levels: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
   if (levels[entry.level] < levels[minLevel]) return;
 
-  const isProd = process.env.NODE_ENV === "production";
-  const output = isProd
+  const output = isJsonMode()
     ? JSON.stringify({ ...entry, timestamp: new Date().toISOString() })
     : formatPretty(entry);
 
