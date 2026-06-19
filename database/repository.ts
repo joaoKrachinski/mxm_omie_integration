@@ -67,6 +67,20 @@ export async function updateDocument(
   }
 }
 
+export async function findDocumentByCnpjNumero(
+  cnpjCpf: string,
+  numeroDocumento: string
+): Promise<PaymentIntegration | null> {
+  const Model = getPaymentIntegrationModel();
+  const doc = await Model.findOne({ cnpj_cpf: cnpjCpf, numero_documento: numeroDocumento }).lean();
+  logger.info("findDocumentByCnpjNumero OK", {
+    cnpj_cpf: cnpjCpf,
+    numero_documento: numeroDocumento,
+    found: Boolean(doc),
+  });
+  return doc as PaymentIntegration | null;
+}
+
 // ─── Queries auxiliares ───────────────────────────────────────────────────────
 
 export async function findByOmieId(omieId: string): Promise<PaymentIntegration | null> {

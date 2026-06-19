@@ -1,37 +1,44 @@
 // ─── Payload raw enviado pela automação do Jira ──────────────────────────────
 
+// Campos de seleção (option/select) do Jira retornam: { id, self, value }
+type JiraOptionField = { id: string; self: string; value: string } | null;
+
 export type JiraWebhookPayload = {
   issue: {
     self?: string;
     id?: number;
     key: string;
     fields: {
-      // Campos conhecidos (mapeados)
-      customfield_12568?: string;   // tipo_do_titulo
-      customfield_12112?: string;   // numero_do_titulo
-      customfield_10184?: string;   // data_emissao (ISODate)
+      // Campos de texto livre
+      customfield_12112?: string;        // numero_do_titulo
+      customfield_10184?: string;        // data_emissao (ISODate)
       customfield_10181?: string | number; // valor
-      customfield_10183?: string;   // vencimento (ISODate)
-      customfield_10182?: string;   // metodo_de_pagamento
-      customfield_10186?: string;   // linha_digitavel_boleto
-      customfield_10180?: string;   // cnpj_do_fornecedor
-      customfield_10179?: string;   // nome_do_fornecedor
-      customfield_10178?: string;   // numero_do_titulo_producao
-      customfield_10214?: string;   // codigo_ntc
-      customfield_10195?: string;   // centro_de_custo
-      customfield_10196?: string;   // tipo_de_pagamento
-      customfield_10189?: string;   // agencia_bancaria
-      customfield_10190?: string;   // conta_bancaria
-      customfield_12243?: string;   // banco
-      summary?: string;              // título da issue
-      customfield_11645?: string;   // squad_foundation
-      customfield_12563?: string;   // fornecedores_finance
-      customfield_12562?: string;   // fornecedores_growth
-      customfield_12416?: string;   // fornecedores_influ
-      customfield_12425?: string;   // fornecedores_legal
-      customfield_12564?: string;   // fornecedores_operations
-      customfield_12566?: string;   // fornecedores_people
-      customfield_12565?: string;   // fornecedores_technology
+      customfield_10183?: string;        // vencimento (ISODate)
+      customfield_10186?: string;        // linha_digitavel_boleto
+      customfield_10180?: string;        // cnpj_do_fornecedor
+      customfield_10179?: string;        // nome_do_fornecedor
+      customfield_10178?: string;        // numero_do_titulo_producao
+      customfield_10214?: string;        // codigo_ntc
+      customfield_10189?: string;        // agencia_bancaria
+      customfield_10190?: string;        // conta_bancaria
+      summary?: string;                  // título da issue
+      // Campos de seleção — retornam { id, self, value }
+      customfield_12568?: JiraOptionField;  // tipo_do_titulo
+      customfield_10182?: JiraOptionField;  // metodo_de_pagamento
+      customfield_10195?: JiraOptionField;  // centro_de_custo
+      customfield_10196?: JiraOptionField;  // tipo_de_pagamento
+      customfield_12243?: JiraOptionField;  // banco
+      customfield_11645?: JiraOptionField;  // squad
+      customfield_12563?: JiraOptionField;  // fornecedores_finance
+      customfield_12562?: JiraOptionField;  // fornecedores_growth
+      customfield_12416?: JiraOptionField;  // fornecedores_influ
+      customfield_12425?: JiraOptionField;  // fornecedores_legal
+      customfield_12564?: JiraOptionField;  // fornecedores_operations
+      customfield_12566?: JiraOptionField;  // fornecedores_people
+      customfield_12565?: JiraOptionField;  // fornecedores_technology
+      customfield_15100?: JiraOptionField;  // validacao_forge_app
+      customfield_15101?: JiraOptionField;  // validacao_forge_jira
+      customfield_15145?: JiraOptionField;  // validacao_ocr_ia
       status?: {
         name?: string;
         id?: number;
@@ -76,12 +83,20 @@ export type JiraIssueData = {
   summary?: string;
   squad?: string;
   fornecedor?: string;
+  validacao_forge_app?: string;
+  validacao_forge_jira?: string;
+  validacao_ocr_ia?: string;
 
   // Campos extras não mapeados ficam aqui
   campos_extras: Record<string, unknown>;
 };
 
 // ─── Função de mapeamento: raw Jira → interno ────────────────────────────────
+
+function optVal(field: JiraOptionField | undefined): string | undefined {
+  if (!field) return undefined;
+  return field.value ?? undefined;
+}
 
 export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
   const { key, fields } = payload.issue;
@@ -99,6 +114,7 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
     "customfield_12243", "customfield_11645", "summary",
     "customfield_12563", "customfield_12562", "customfield_12416",
     "customfield_12425", "customfield_12564", "customfield_12566", "customfield_12565",
+    "customfield_15100", "customfield_15101", "customfield_15145",
     "status", "creator", "self",
   ]);
 
@@ -111,35 +127,38 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
   }
 
   return {
-    jira_id:                  key,
-    summary:                  fields.summary ?? undefined,
-    tipo_nota:                fields.customfield_12568 ?? undefined,
-    numero_documento:         fields.customfield_12112 ?? undefined,
-    data_emissao:             fields.customfield_10184 ?? undefined,
-    valor:                    Number.isFinite(valor) ? valor : undefined,
-    vencimento:               fields.customfield_10183 ?? undefined,
-    metodo_de_pagamento:      fields.customfield_10182 ?? undefined,
-    linha_digitavel_boleto:   fields.customfield_10186 ?? undefined,
-    cnpj_cpf:                 fields.customfield_10180 ?? undefined,
-    nome_fornecedor:          fields.customfield_10179 ?? undefined,
+    jira_id:                   key,
+    summary:                   fields.summary ?? undefined,
+    tipo_nota:                 optVal(fields.customfield_12568),
+    numero_documento:          fields.customfield_12112 ?? undefined,
+    data_emissao:              fields.customfield_10184 ?? undefined,
+    valor:                     Number.isFinite(valor) ? valor : undefined,
+    vencimento:                fields.customfield_10183 ?? undefined,
+    metodo_de_pagamento:       optVal(fields.customfield_10182),
+    linha_digitavel_boleto:    fields.customfield_10186 ?? undefined,
+    cnpj_cpf:                  fields.customfield_10180 ?? undefined,
+    nome_fornecedor:           fields.customfield_10179 ?? undefined,
     numero_documento_producao: fields.customfield_10178 ?? undefined,
-    codigo_ntc:               fields.customfield_10214 ?? undefined,
-    centro_de_custo:          fields.customfield_10195 ?? undefined,
-    tipo_de_pagamento:        fields.customfield_10196 ?? undefined,
-    agencia:                  fields.customfield_10189 ?? undefined,
-    conta:                    fields.customfield_10190 ?? undefined,
-    banco:                    fields.customfield_12243 ?? undefined,
-    status_jira:              fields.status?.name ?? undefined,
-    criador:                  fields.creator?.accountId ?? undefined,
-    squad:      fields.customfield_11645 ?? undefined,
-    fornecedor: fields.customfield_12563
-           ?? fields.customfield_12562
-           ?? fields.customfield_12416
-           ?? fields.customfield_12425
-           ?? fields.customfield_12564
-           ?? fields.customfield_12566
-           ?? fields.customfield_12565
-           ?? undefined,
+    codigo_ntc:                fields.customfield_10214 ?? undefined,
+    centro_de_custo:           optVal(fields.customfield_10195),
+    tipo_de_pagamento:         optVal(fields.customfield_10196),
+    agencia:                   fields.customfield_10189 ?? undefined,
+    conta:                     fields.customfield_10190 ?? undefined,
+    banco:                     optVal(fields.customfield_12243),
+    status_jira:               fields.status?.name ?? undefined,
+    criador:                   fields.creator?.accountId ?? undefined,
+    squad:                     optVal(fields.customfield_11645),
+    fornecedor:                optVal(fields.customfield_12563)
+                            ?? optVal(fields.customfield_12562)
+                            ?? optVal(fields.customfield_12416)
+                            ?? optVal(fields.customfield_12425)
+                            ?? optVal(fields.customfield_12564)
+                            ?? optVal(fields.customfield_12566)
+                            ?? optVal(fields.customfield_12565)
+                            ?? undefined,
+    validacao_forge_app:       optVal(fields.customfield_15100),
+    validacao_forge_jira:      optVal(fields.customfield_15101),
+    validacao_ocr_ia:          optVal(fields.customfield_15145),
     campos_extras,
   };
 }
@@ -154,6 +173,7 @@ export type ReprocessJiraInput = {
   status?: string;
   desde?: string;
   limite?: number;
+  jql?: string;
 };
 
 export type OrchestratorResult = {

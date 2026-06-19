@@ -61,54 +61,52 @@ function resolveSlackTarget(input: SlackAlertInput, defaultChannel?: string): st
 }
 
 export async function enviarAlertaSlack(input: SlackAlertInput): Promise<void> {
-  const { botToken, defaultChannel } = getSlackConfig();
+  const botToken = process.env.SLACK_BOT_TOKEN;
+  if (!botToken) {
+    console.warn("[slack] SLACK_BOT_TOKEN não configurado — alerta ignorado");
+    return;
+  }
 
-  const channel = input.id;
-
-  const response = await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${botToken}`,
-      "Content-Type": "application/json; charset=utf-8",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      channel,
-      text: input.message,
-      mrkdwn: true,
-      unfurl_links: false,
-      unfurl_media: false,
-    }),
-  });
-
-  const responseText = await response.text();
-
-  let responseBody: SlackPostMessageResponse;
+  const channel = input.id || process.env.SLACK_DEVELOPMENT_CHANNEL;
+  if (!channel) {
+    console.warn("[slack] Canal Slack não informado e SLACK_DEVELOPMENT_CHANNEL não configurado — alerta ignorado");
+    return;
+  }
 
   try {
-    responseBody = responseText
-      ? (JSON.parse(responseText) as SlackPostMessageResponse)
-      : { ok: false, error: "empty_response" };
-  } catch {
-    throw new Error(
-      `Erro ao interpretar resposta do Slack. HTTP Status: ${response.status}. Body: ${responseText}`,
-    );
-  }
+    const response = await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${botToken}`,
+        "Content-Type": "application/json; charset=utf-8",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        channel,
+        text: input.message,
+        mrkdwn: true,
+        unfurl_links: false,
+        unfurl_media: false,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(
-      `Erro HTTP ao enviar alerta Slack. Status: ${response.status}. Slack error: ${
-        responseBody.error ?? "unknown_error"
-      }`,
-    );
-  }
+    const responseText = await response.text();
+    let responseBody: SlackPostMessageResponse;
 
-  if (!responseBody.ok) {
-    throw new Error(
-      `Erro ao enviar alerta Slack. Slack error: ${
-        responseBody.error ?? "unknown_error"
-      }`,
-    );
+    try {
+      responseBody = responseText
+        ? (JSON.parse(responseText) as SlackPostMessageResponse)
+        : { ok: false, error: "empty_response" };
+    } catch {
+      console.warn(`[slack] Resposta inválida do Slack (HTTP ${response.status}): ${responseText}`);
+      return;
+    }
+
+    if (!response.ok || !responseBody.ok) {
+      console.warn(`[slack] Alerta não entregue — Slack error: ${responseBody.error ?? response.status}`);
+    }
+  } catch (err) {
+    console.warn(`[slack] Falha ao enviar alerta (non-fatal): ${String(err)}`);
   }
 }
 

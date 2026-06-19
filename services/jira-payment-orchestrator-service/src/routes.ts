@@ -3,12 +3,13 @@ import type { Config } from "./config";
 import { makeHandlers } from "./handlers";
 
 export function registerRoutes(app: FastifyInstance, config: Config): void {
-  const { handleApproverJira, handleVerifyInvoiceJira, handleUpdateOmieJira, handleReprocess, handleHealth } =
+  const { handleApproverJira, handleVerifyInvoiceJira, handleUpdateOmieJira, handleReprocess, handleReprocessAgendamento, handleHealth } =
     makeHandlers(config);
 
   app.post("/approverJira", handleApproverJira);
   app.post("/verifyInvoiceJira", handleVerifyInvoiceJira);
   app.post("/updateOmieJira", handleUpdateOmieJira);
   app.post("/jira/reprocess", handleReprocess);
+  app.post("/jira/reprocess/agendamento", handleReprocessAgendamento);
   app.get("/health", handleHealth);
 }

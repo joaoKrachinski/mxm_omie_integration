@@ -7,6 +7,11 @@ export type SyncOmieResult = {
   erros: number;
 };
 
+export type SyncOmieInput = {
+  limite?: number;       // limita quantos títulos processar (útil para testes)
+  criar_no_omie?: boolean; // se true, cria conta a pagar no Omie (padrão: false)
+};
+
 export type ReprocessInput = {
   status?: string;
   desde?: string;

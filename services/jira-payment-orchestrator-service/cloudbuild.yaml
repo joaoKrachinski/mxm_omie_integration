@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -f
+      - services/jira-payment-orchestrator-service/Dockerfile
+      - -t
+      - gcr.io/$PROJECT_ID/jira-payment-orchestrator-service
+      - .
+images:
+  - gcr.io/$PROJECT_ID/jira-payment-orchestrator-service

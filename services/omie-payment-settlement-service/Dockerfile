@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY shared/ ./shared/
 COPY adapters/ ./adapters/
+COPY database/ ./database/
 COPY services/omie-payment-settlement-service/ ./services/omie-payment-settlement-service/
 
 RUN npm run build

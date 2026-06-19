@@ -1,11 +1,13 @@
 export {
   buscarIssueJira,
+  buscarIssuesPorJQL,
   atualizarCampoJira,
   atualizarStatusJira,
+  adicionarComentarioJira,
   buscarEmailUsuarioJira,
   buscarAccountIdPorEmail,
 } from "@adapters/jira";
-export type { JiraIssue, JiraCampoUpdate, JiraStatusUpdate } from "@adapters/jira";
+export type { JiraIssue, JiraCampoUpdate, JiraStatusUpdate, JiraSearchIssue } from "@adapters/jira";
 
 export { alterarContaPagarOmie } from "@adapters/omie";
 export type { OmieAlteracaoInput } from "@adapters/omie";

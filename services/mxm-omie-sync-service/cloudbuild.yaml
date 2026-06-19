@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -f
+      - services/mxm-omie-sync-service/Dockerfile
+      - -t
+      - gcr.io/$PROJECT_ID/mxm-omie-sync-service
+      - .
+images:
+  - gcr.io/$PROJECT_ID/mxm-omie-sync-service

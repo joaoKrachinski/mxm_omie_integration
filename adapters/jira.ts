@@ -17,7 +17,7 @@ export type JiraCampoUpdate = {
 
 export type JiraStatusUpdate = {
   jira_id: string;
-  transition_id: string;
+  status_alvo: string;
 };
 
 function getJiraConfig() {
@@ -158,15 +158,155 @@ export async function atualizarCampoJira(input: JiraCampoUpdate): Promise<void> 
   }
 }
 
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
 export async function atualizarStatusJira(input: JiraStatusUpdate): Promise<void> {
-  // TODO: implementar transição de status no Jira
-  // POST {JIRA_BASE_URL}/rest/api/3/issue/{jira_id}/transitions
-  throw new Error("TODO: atualizarStatusJira não implementado");
+  logger.info("Iniciando transição de status no Jira", {
+    jiraId: input.jira_id,
+    status_alvo: input.status_alvo,
+  });
+
+  const { email, apiToken, baseUrl } = getJiraConfig();
+  const authHeader = await getJiraCredentials(email, apiToken);
+
+  const transitionsUrl = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(input.jira_id)}/transitions`;
+
+  const transitionsResponse = await fetch(transitionsUrl, {
+    method: "GET",
+    headers: { Authorization: authHeader, Accept: "application/json" },
+  });
+
+  if (!transitionsResponse.ok) {
+    const errorText = await transitionsResponse.text();
+    logger.error("Erro ao buscar transições da issue no Jira", {
+      jiraId: input.jira_id,
+      status: transitionsResponse.status,
+      error: errorText,
+    });
+    if (transitionsResponse.status === 404) {
+      throw new Error(
+        `Issue ${input.jira_id} não encontrada ou usuário sem permissão de transição no projeto. ` +
+        `Verifique se "${process.env.JIRA_EMAIL}" tem permissão "Transicionar Issues" no projeto.`
+      );
+    }
+    throw new Error(`Erro ao buscar transições no Jira: ${transitionsResponse.status} - ${errorText}`);
+  }
+
+  const transitionsData = await transitionsResponse.json() as {
+    transitions: Array<{ id: string; name: string; to: { name: string } }>;
+  };
+
+  const normalized = normalizeStr(input.status_alvo);
+
+  // Busca pela transição cujo status final (to.name) corresponde ao status desejado
+  const transition = transitionsData.transitions.find(
+    (t) => normalizeStr(t.to?.name ?? "") === normalized
+  );
+
+  if (!transition) {
+    const available = transitionsData.transitions
+      .map((t) => `"${t.to?.name}"`)
+      .join(", ");
+    logger.error("Status alvo não encontrado nas transições disponíveis", {
+      jiraId: input.jira_id,
+      status_alvo: input.status_alvo,
+      available,
+    });
+    throw new Error(
+      `Status alvo "${input.status_alvo}" não encontrado. Status disponíveis: ${available}`
+    );
+  }
+
+  logger.info("Transição encontrada — executando", {
+    jiraId: input.jira_id,
+    transition_id: transition.id,
+    transition_name: transition.name,
+    status_alvo: transition.to?.name,
+  });
+
+  const executeResponse = await fetch(transitionsUrl, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ transition: { id: transition.id } }),
+  });
+
+  if (!executeResponse.ok) {
+    const errorText = await executeResponse.text();
+    logger.error("Erro ao executar transição no Jira", {
+      jiraId: input.jira_id,
+      transition_id: transition.id,
+      status: executeResponse.status,
+      error: errorText,
+    });
+    throw new Error(`Erro ao executar transição no Jira: ${executeResponse.status} - ${errorText}`);
+  }
+
+  logger.info("Status atualizado com sucesso no Jira", {
+    jiraId: input.jira_id,
+    status_alvo: transition.to?.name,
+  });
+}
+
+export async function adicionarComentarioJira(
+  jiraId: string,
+  texto: string,
+  interno = true
+): Promise<void> {
+  logger.info("Adicionando comentário no Jira", { jiraId, interno });
+
+  const { email, apiToken, baseUrl } = getJiraConfig();
+  const authHeader = await getJiraCredentials(email, apiToken);
+
+  const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(jiraId)}/comment`;
+
+  const body: Record<string, unknown> = {
+    body: {
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: texto }],
+        },
+      ],
+    },
+  };
+
+  if (interno) {
+    body["visibility"] = { type: "role", value: "Service Desk Team" };
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error("Erro ao adicionar comentário no Jira", { jiraId, status: response.status, error: errorText });
+    throw new Error(`Erro ao adicionar comentário no Jira: ${response.status} - ${errorText}`);
+  }
+
+  logger.info("Comentário adicionado com sucesso no Jira", { jiraId, interno });
 }
 
 export async function atualizarJiraComoPago(jiraId: string, dataPagamento: string): Promise<void> {
-  // TODO: implementar atualização do Jira refletindo pagamento confirmado no Omie
-  throw new Error("TODO: atualizarJiraComoPago não implementado");
+  logger.info("Atualizando Jira como pago", { jiraId, dataPagamento });
+
+  await atualizarStatusJira({ jira_id: jiraId, status_alvo: process.env.JIRA_STATUS_PAGO ?? "Pago" });
+
+  logger.info("Jira atualizado como pago com sucesso", { jiraId });
 }
 
 // Busca os usuário do Jira
@@ -368,4 +508,67 @@ export async function buscarAccountIdPorEmail(
 
     throw error;
   }
+}
+
+export type JiraSearchIssue = {
+  key: string;
+  fields: Record<string, unknown>;
+};
+
+export async function buscarIssuesPorJQL(
+  jql: string,
+  fields: string[] = []
+): Promise<JiraSearchIssue[]> {
+  logger.info("Iniciando busca de issues por JQL", { jql });
+
+  const { email, apiToken, baseUrl } = getJiraConfig();
+  const authHeader = await getJiraCredentials(email, apiToken);
+
+  const url = `${baseUrl}/rest/api/3/search/jql`;
+  const PAGE_SIZE = 100;
+  const allIssues: JiraSearchIssue[] = [];
+  let nextPageToken: string | undefined;
+
+  do {
+    const body: Record<string, unknown> = {
+      jql,
+      maxResults: PAGE_SIZE,
+    };
+    if (fields.length) body["fields"] = fields;
+    if (nextPageToken) body["nextPageToken"] = nextPageToken;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("Erro ao buscar issues por JQL", { status: response.status, error: errorText, jql });
+      throw new Error(`Erro ao buscar issues por JQL: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json() as {
+      issues: Array<{ key: string; fields: Record<string, unknown> }>;
+      nextPageToken?: string;
+    };
+
+    allIssues.push(...data.issues);
+    nextPageToken = data.nextPageToken;
+
+    logger.info("Página de issues carregada", {
+      jql,
+      retornados: data.issues.length,
+      total_ate_agora: allIssues.length,
+      tem_proxima_pagina: Boolean(nextPageToken),
+    });
+  } while (nextPageToken);
+
+  logger.info("Busca por JQL concluída", { jql, total: allIssues.length });
+  return allIssues;
 }

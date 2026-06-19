@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -f
+      - services/omie-payment-settlement-service/Dockerfile
+      - -t
+      - gcr.io/$PROJECT_ID/omie-payment-settlement-service
+      - .
+images:
+  - gcr.io/$PROJECT_ID/omie-payment-settlement-service

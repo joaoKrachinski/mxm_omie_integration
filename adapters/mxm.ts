@@ -90,7 +90,51 @@ export async function listarTituloPagar(): Promise<MxmTituloPagar[]> {
     const responseData = await response.json();
     logger.info("Resposta recebida do MXM", { data: responseData }); 
 
-    return responseData?.Data
+    return responseData?.Data ?? []
+  } catch (error) {
+    logger.error("Erro ao conectar com MXM", { error: error instanceof Error ? error.message : String(error) });
+    throw new Error(`Erro ao conectar com MXM: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export async function consultarFornecedorMxm(cnpjCpf: string): Promise<{ codigo: string; nome: string } | null> {
+  const { baseUrl, username, password, environment } = getMxmConfig();
+
+  const url = `${baseUrl}/webmanager/api/InterfacedoFornecedor/Consulta`;
+  const body = {
+    "AutheticationToken": {
+      "Username": username,
+      "Password": password,
+      "EnvironmentName": environment
+    },
+    "Data": {
+      "Codigo": cnpjCpf,
+    }
+  };
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("Erro ao consultar fornecedor no MXM", { status: response.status, statusText: response.statusText, errorText });
+      throw new Error(`Erro ao consultar fornecedor no MXM: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    logger.info("Resposta recebida do MXM", { data: responseData }); 
+
+    return {
+      codigo: responseData?.Data[0]?.Codigo ?? "",
+      nome: responseData?.Data[0]?.Nome ?? "",
+    }
   } catch (error) {
     logger.error("Erro ao conectar com MXM", { error: error instanceof Error ? error.message : String(error) });
     throw new Error(`Erro ao conectar com MXM: ${error instanceof Error ? error.message : String(error)}`);

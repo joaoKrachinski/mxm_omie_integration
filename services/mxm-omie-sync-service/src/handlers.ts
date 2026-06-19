@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { Config } from "./config";
-import type { ReprocessInput, ListDocumentsInput } from "./types";
+import type { SyncOmieInput, ReprocessInput, ListDocumentsInput } from "./types";
 import { syncOmie, reprocessOmie, getSyncStatus, getSyncDocuments } from "./useCases";
 import { sendSuccess, sendError } from "@shared/http";
 import { genCorrelationId } from "@shared/utils";
@@ -11,9 +11,10 @@ const logger = createLogger("mxm-omie-sync-service");
 export function makeHandlers(config: Config) {
   async function handleSyncOmie(req: FastifyRequest, reply: FastifyReply) {
     const correlationId = (req.headers["x-correlation-id"] as string) ?? genCorrelationId();
-    logger.info("POST /syncOmie recebido", { correlation_id: correlationId, endpoint: "/syncOmie" });
+    const input = (req.body ?? {}) as SyncOmieInput;
+    logger.info("POST /syncOmie recebido", { correlation_id: correlationId, endpoint: "/syncOmie", input });
     try {
-      const result = await syncOmie(config, correlationId);
+      const result = await syncOmie(config, correlationId, input);
       sendSuccess(reply, result, correlationId);
     } catch (err) {
       logger.error("Erro em /syncOmie", { correlation_id: correlationId, error: String(err) });

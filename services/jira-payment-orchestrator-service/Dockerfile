@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY shared/ ./shared/
 COPY adapters/ ./adapters/
+COPY database/ ./database/
 COPY services/jira-payment-orchestrator-service/ ./services/jira-payment-orchestrator-service/
 
 RUN npm run build

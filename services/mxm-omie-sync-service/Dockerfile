@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY shared/ ./shared/
 COPY adapters/ ./adapters/
+COPY database/ ./database/
 COPY services/mxm-omie-sync-service/ ./services/mxm-omie-sync-service/
 
 RUN npm run build
