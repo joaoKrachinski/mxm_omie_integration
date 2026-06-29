@@ -29,6 +29,15 @@ export type PaymentIntegration = {
   vencimento?: string;
   pagamento?: Pagamento;
   data_pagamento?: string;
+  // Retenções fiscais (vindas do MXM)
+  ValordoIRRF?: string;
+  ValordoINSS?: string;
+  ValordoISS?: string;
+  ValordoPIS?: string;
+  ValordoCOFINS?: string;
+  ValordoCIDE?: string;
+  ValordaContribuicaoSocial?: string;
+  INSSI?: string;
 };
 
 export type HttpSuccess<T = unknown> = {

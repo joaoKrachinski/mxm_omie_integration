@@ -42,6 +42,15 @@ const PaymentIntegrationSchema = new Schema(
     tipo_nota:          String,
     pagamento:          PagamentoSchema,
     data_pagamento:     String,
+    // Retenções fiscais (MXM)
+    ValordoIRRF:              String,
+    ValordoINSS:              String,
+    ValordoISS:               String,
+    ValordoPIS:               String,
+    ValordoCOFINS:            String,
+    ValordoCIDE:              String,
+    ValordaContribuicaoSocial: String,
+    INSSI:                    String,
   },
   {
     collection: process.env.MONGODB_COLLECTION_PAYMENT_INTEGRATIONS ?? "payment_integrations",

@@ -38,6 +38,7 @@ export type JiraWebhookPayload = {
       customfield_12565?: JiraOptionField;  // fornecedores_technology
       customfield_15100?: JiraOptionField;  // validacao_forge_app
       customfield_15101?: JiraOptionField;  // validacao_forge_jira
+      customfield_15143?: JiraOptionField;  // validacao_qive
       customfield_15145?: JiraOptionField;  // validacao_ocr_ia
       status?: {
         name?: string;
@@ -63,7 +64,7 @@ export type JiraIssueData = {
 
   // Campos conhecidos do payload
   tipo_nota?: string;
-  numero_documento?: string;
+  numero_documento?: string;   // customfield_12112 ?? customfield_10178
   data_emissao?: string;
   valor?: number;
   vencimento?: string;
@@ -71,7 +72,6 @@ export type JiraIssueData = {
   linha_digitavel_boleto?: string;
   cnpj_cpf?: string;
   nome_fornecedor?: string;
-  numero_documento_producao?: string;
   codigo_ntc?: string;
   centro_de_custo?: string;
   tipo_de_pagamento?: string;
@@ -85,6 +85,7 @@ export type JiraIssueData = {
   fornecedor?: string;
   validacao_forge_app?: string;
   validacao_forge_jira?: string;
+  validacao_qive?: string;
   validacao_ocr_ia?: string;
 
   // Campos extras não mapeados ficam aqui
@@ -114,7 +115,7 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
     "customfield_12243", "customfield_11645", "summary",
     "customfield_12563", "customfield_12562", "customfield_12416",
     "customfield_12425", "customfield_12564", "customfield_12566", "customfield_12565",
-    "customfield_15100", "customfield_15101", "customfield_15145",
+    "customfield_15100", "customfield_15101", "customfield_15143", "customfield_15145",
     "status", "creator", "self",
   ]);
 
@@ -130,7 +131,7 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
     jira_id:                   key,
     summary:                   fields.summary ?? undefined,
     tipo_nota:                 optVal(fields.customfield_12568),
-    numero_documento:          fields.customfield_12112 ?? undefined,
+    numero_documento:          fields.customfield_12112 ?? fields.customfield_10178 ?? undefined,
     data_emissao:              fields.customfield_10184 ?? undefined,
     valor:                     Number.isFinite(valor) ? valor : undefined,
     vencimento:                fields.customfield_10183 ?? undefined,
@@ -138,7 +139,6 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
     linha_digitavel_boleto:    fields.customfield_10186 ?? undefined,
     cnpj_cpf:                  fields.customfield_10180 ?? undefined,
     nome_fornecedor:           fields.customfield_10179 ?? undefined,
-    numero_documento_producao: fields.customfield_10178 ?? undefined,
     codigo_ntc:                fields.customfield_10214 ?? undefined,
     centro_de_custo:           optVal(fields.customfield_10195),
     tipo_de_pagamento:         optVal(fields.customfield_10196),
@@ -158,6 +158,7 @@ export function mapJiraPayload(payload: JiraWebhookPayload): JiraIssueData {
                             ?? undefined,
     validacao_forge_app:       optVal(fields.customfield_15100),
     validacao_forge_jira:      optVal(fields.customfield_15101),
+    validacao_qive:            optVal(fields.customfield_15143),
     validacao_ocr_ia:          optVal(fields.customfield_15145),
     campos_extras,
   };

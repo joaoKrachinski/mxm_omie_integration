@@ -15,7 +15,12 @@ function buildFilter(status?: string, desde?: string): Record<string, unknown> {
 
 export async function insertDocument(doc: PaymentIntegration): Promise<void> {
   const Model = getPaymentIntegrationModel();
-  const created = await Model.create(doc);
+  const normalizedDoc = {
+    ...doc,
+    numero_documento: String(doc.numero_documento),
+    cnpj_cpf: String(doc.cnpj_cpf),
+  };
+  const created = await Model.create(normalizedDoc);
   logger.info("insertDocument OK", {
     numero_documento: doc.numero_documento,
     cnpj_cpf: doc.cnpj_cpf,
@@ -31,7 +36,7 @@ export async function findDocument(
   valor: number
 ): Promise<PaymentIntegration | null> {
   const Model = getPaymentIntegrationModel();
-  const doc = await Model.findOne({ numero_documento: numeroDocumento, cnpj_cpf: cnpjCpf, valor }).lean();
+  const doc = await Model.findOne({ numero_documento: String(numeroDocumento), cnpj_cpf: String(cnpjCpf), valor }).lean();
   logger.info("findDocument OK", {
     numero_documento: numeroDocumento,
     cnpj_cpf: cnpjCpf,
@@ -49,7 +54,7 @@ export async function updateDocument(
 ): Promise<void> {
   const Model = getPaymentIntegrationModel();
   const result = await Model.updateOne(
-    { numero_documento: numeroDocumento, cnpj_cpf: cnpjCpf, valor },
+    { numero_documento: String(numeroDocumento), cnpj_cpf: String(cnpjCpf), valor },
     { $set: changes },
     { runValidators: true }
   );
@@ -72,7 +77,7 @@ export async function findDocumentByCnpjNumero(
   numeroDocumento: string
 ): Promise<PaymentIntegration | null> {
   const Model = getPaymentIntegrationModel();
-  const doc = await Model.findOne({ cnpj_cpf: cnpjCpf, numero_documento: numeroDocumento }).lean();
+  const doc = await Model.findOne({ cnpj_cpf: String(cnpjCpf), numero_documento: String(numeroDocumento) }).lean();
   logger.info("findDocumentByCnpjNumero OK", {
     cnpj_cpf: cnpjCpf,
     numero_documento: numeroDocumento,

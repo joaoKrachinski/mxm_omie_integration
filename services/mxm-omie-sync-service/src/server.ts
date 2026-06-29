@@ -23,6 +23,7 @@ async function bootstrap() {
 
   const address = await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info(`mxm-omie-sync-service rodando em ${address}`);
+  logger.info("Endpoints registrados:\n" + app.printRoutes());
 
   const shutdown = async () => {
     logger.info("Encerrando servidor...");

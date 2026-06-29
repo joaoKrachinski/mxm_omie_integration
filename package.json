@@ -17,9 +17,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google-cloud/bigquery": "^8.3.1",
     "dotenv": "^16.4.0",
     "fastify": "^5.8.5",
     "googleapis": "^173.0.0",
+    "jszip": "^3.10.1",
     "mongodb": "^6.10.0",
     "mongoose": "^9.7.0",
     "uuid": "^14.0.0"

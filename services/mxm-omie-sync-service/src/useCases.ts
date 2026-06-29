@@ -9,13 +9,14 @@ import type {
 } from "./types";
 import {
   listarTituloPagar,
+  consultarTituloMXM,
   criarContaPagarOmie,
   consultarContaPagarOmie,
   enviarAlertaSlack,
   buscarIssueJira,
 } from "./adapters";
 import {
-  findDocument as findByIdempotencyKey,
+  findDocumentByCnpjNumero as findByIdempotencyKey,
   insertDocument as insertPaymentIntegration,
   countByStatus,
   findPendingReprocess,
@@ -97,7 +98,7 @@ export async function syncOmie(
         numero_documento: titulo.NumeroTitulo,
       });
 
-      const existente = await findByIdempotencyKey(titulo.NumeroTitulo, cnpjCpf, valorTituloInt);
+      const existente = await findByIdempotencyKey(cnpjCpf, titulo.NumeroTitulo);
 
       if (existente) {
         logger.info("[2a] Título já existe no banco — ignorando", {
@@ -114,27 +115,53 @@ export async function syncOmie(
         numero_documento: titulo.NumeroTitulo,
       });
 
-      // ── Etapa 2b: Criar Conta no Omie ────────────────────────────────────────
-      // const vencimento = new Date();
-      // vencimento.setFullYear(vencimento.getFullYear() + 10);
-      // const dataVencimentoOmie = toOmieDate(vencimento);
-      // logger.info("[2b] Criando conta a pagar no Omie...", {
-      //   correlation_id: correlationId,
-      //   numero_documento: titulo.NumeroTitulo,
-      //   data_vencimento: dataVencimentoOmie,
-      // });
-      // const omieResult = await criarContaPagarOmie({
-      //   numero_documento: titulo.NumeroTitulo,
-      //   cnpj_cpf: cnpjCpf,
-      //   valor: valorTituloFloat,
-      //   data_vencimento: dataVencimentoOmie,
-      // });
-      // logger.info("[2b] Conta criada no Omie", { omie_id: omieResult.omie_id });
+      // ── Etapa 2b: Consultar retenções no MXM ─────────────────────────────────
+      logger.info("[2b] Consultando retenções no MXM...", {
+        correlation_id: correlationId,
+        numero_documento: titulo.NumeroTitulo,
+      });
+
+      let retencoes: Awaited<ReturnType<typeof consultarTituloMXM>> = null;
+      try {
+        retencoes = await consultarTituloMXM(titulo.NumeroTitulo, titulo.Fornecedor);
+        logger.info("[2b] Retenções recebidas do MXM", {
+          correlation_id: correlationId,
+          numero_documento: titulo.NumeroTitulo,
+          ValordoIRRF: retencoes?.ValordoIRRF,
+          ValordoINSS: retencoes?.ValordoINSS,
+          ValordoISS: retencoes?.ValordoISS,
+        });
+      } catch (retErr) {
+        logger.warn("[2b] Falha ao consultar retenções no MXM — prosseguindo sem elas", {
+          correlation_id: correlationId,
+          numero_documento: titulo.NumeroTitulo,
+          error: String(retErr),
+        });
+      }
+
+      // ── Etapa 2d: Criar Conta no Omie ────────────────────────────────────────
+      const vencimento = new Date();
+      vencimento.setFullYear(vencimento.getFullYear() + 10);
+      const dataVencimentoOmie = toOmieDate(vencimento);
+      logger.info("[2b] Criando conta a pagar no Omie...", {
+        correlation_id: correlationId,
+        numero_documento: titulo.NumeroTitulo,
+        data_vencimento: dataVencimentoOmie,
+      });
+      const omieResult = await criarContaPagarOmie({
+        numero_documento: titulo.NumeroTitulo,
+        cnpj_cpf: cnpjCpf,
+        valor: valorTituloFloat,
+        data_vencimento: dataVencimentoOmie,
+        valor_centavos: valorTituloInt,
+      });
+      logger.info("[2b] Conta criada no Omie", { omie_id: omieResult.omie_id });
 
       // ── Etapa 2c: Persistir no MongoDB ────────────────────────────────────
       logger.info("[2c] Persistindo no MongoDB...", {
         correlation_id: correlationId,
         numero_documento: titulo.NumeroTitulo,
+        omieResult,
       });
 
       await insertPaymentIntegration({
@@ -142,9 +169,19 @@ export async function syncOmie(
         numero_documento: titulo.NumeroTitulo,
         cnpj_cpf: cnpjCpf,
         valor: valorTituloInt,
-        omie_id: "None",//String(omieResult?.omie_id) ?? "None",
+        omie_id: omieResult.omie_id,
         data_criacao: toIsoDate(new Date()),
         status: "criado_omie",
+        ...(retencoes && {
+          ValordoIRRF:               retencoes.ValordoIRRF  || "null",
+          ValordoINSS:               retencoes.ValordoINSS  || "null",
+          ValordoISS:                retencoes.ValordoISS   || "null",
+          ValordoPIS:                retencoes.ValordoPIS   || "null",
+          ValordoCOFINS:             retencoes.ValordoCOFINS || "null",
+          ValordoCIDE:               retencoes.ValordoCIDE  || "null",
+          ValordaContribuicaoSocial: retencoes.ValordaContribuicaoSocial || "null",
+          INSSI:                     retencoes.INSSI || "null",
+        }),
       });
 
       logger.info("[2c] Título persistido com sucesso", {

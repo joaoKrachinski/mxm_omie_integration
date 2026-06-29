@@ -263,25 +263,31 @@ export async function adicionarComentarioJira(
   const { email, apiToken, baseUrl } = getJiraConfig();
   const authHeader = await getJiraCredentials(email, apiToken);
 
-  const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(jiraId)}/comment`;
-
-  const body: Record<string, unknown> = {
-    body: {
-      type: "doc",
-      version: 1,
-      content: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: texto }],
-        },
-      ],
-    },
-  };
-
   if (interno) {
-    body["visibility"] = { type: "role", value: "Service Desk Team" };
+    // Jira Service Management: usa a API específica de service desk com public: false
+    const url = `${baseUrl}/rest/servicedeskapi/request/${encodeURIComponent(jiraId)}/comment`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ body: texto, public: false }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("Erro ao adicionar comentário interno (JSM)", { jiraId, status: response.status, error: errorText });
+      throw new Error(`Erro ao adicionar comentário interno no Jira: ${response.status} - ${errorText}`);
+    }
+
+    logger.info("Comentário interno adicionado com sucesso (JSM)", { jiraId });
+    return;
   }
 
+  // Comentário público: API padrão com ADF
+  const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(jiraId)}/comment`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -289,7 +295,18 @@ export async function adicionarComentarioJira(
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      body: {
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: texto }],
+          },
+        ],
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -298,7 +315,7 @@ export async function adicionarComentarioJira(
     throw new Error(`Erro ao adicionar comentário no Jira: ${response.status} - ${errorText}`);
   }
 
-  logger.info("Comentário adicionado com sucesso no Jira", { jiraId, interno });
+  logger.info("Comentário adicionado com sucesso no Jira", { jiraId });
 }
 
 export async function atualizarJiraComoPago(jiraId: string, dataPagamento: string): Promise<void> {
@@ -447,17 +464,20 @@ export async function buscarAccountIdPorEmail(
       active: boolean;
     }>;
 
-    if (!users.length) {
-      logger.warn("Nenhum usuário encontrado no Jira para o email informado", {
-        userEmail,
-      });
+    // Filtrar contas "qm:" — são contas de cliente/portal, não agentes ativos
+    const activeUsers = users.filter((u) => !u.accountId.startsWith("qm:"));
 
+    if (!activeUsers.length) {
+      logger.warn("Nenhum usuário ativo (não-qm) encontrado no Jira para o email informado", {
+        userEmail,
+        total_retornados: users.length,
+      });
       return null;
     }
 
     const normalizedEmail = userEmail.trim().toLowerCase();
 
-    const exactUser = users.find(
+    const exactUser = activeUsers.find(
       (user) => user.emailAddress?.trim().toLowerCase() === normalizedEmail
     );
 
@@ -471,11 +491,11 @@ export async function buscarAccountIdPorEmail(
       return exactUser.accountId;
     }
 
-    if (users.length === 1) {
-      const [user] = users;
+    if (activeUsers.length === 1) {
+      const [user] = activeUsers;
 
       logger.warn(
-        "Usuário encontrado, mas emailAddress não veio disponível para validação exata",
+        "Usuário ativo encontrado, mas emailAddress não veio disponível para validação exata",
         {
           userEmail,
           accountId: user.accountId,
@@ -487,11 +507,11 @@ export async function buscarAccountIdPorEmail(
     }
 
     logger.warn(
-      "Mais de um usuário encontrado para o email informado; não foi possível escolher com segurança",
+      "Mais de um usuário ativo encontrado para o email informado; não foi possível escolher com segurança",
       {
         userEmail,
-        totalUsers: users.length,
-        users: users.map((user) => ({
+        totalUsers: activeUsers.length,
+        users: activeUsers.map((user) => ({
           accountId: user.accountId,
           displayName: user.displayName,
           hasEmail: Boolean(user.emailAddress),
@@ -571,4 +591,56 @@ export async function buscarIssuesPorJQL(
 
   logger.info("Busca por JQL concluída", { jql, total: allIssues.length });
   return allIssues;
+}
+
+export type JiraAnexo = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  content: string; // URL de download
+};
+
+export async function buscarAnexosJira(jiraId: string): Promise<JiraAnexo[]> {
+  logger.info("Buscando anexos da issue no Jira", { jiraId });
+
+  const { email, apiToken, baseUrl } = getJiraConfig();
+  const authHeader = await getJiraCredentials(email, apiToken);
+
+  const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(jiraId)}?fields=attachment`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: authHeader, Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Erro ao buscar anexos do Jira: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json() as {
+    fields: { attachment?: JiraAnexo[] };
+  };
+
+  const anexos = data.fields.attachment ?? [];
+  logger.info("Anexos encontrados no Jira", { jiraId, total: anexos.length });
+  return anexos;
+}
+
+export async function downloadAnexoJira(contentUrl: string): Promise<Buffer> {
+  const { email, apiToken } = getJiraConfig();
+  const authHeader = await getJiraCredentials(email, apiToken);
+
+  const response = await fetch(contentUrl, {
+    method: "GET",
+    headers: { Authorization: authHeader },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro ao baixar anexo do Jira: ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }

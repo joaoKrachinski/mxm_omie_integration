@@ -19,6 +19,21 @@ export type MxmTituloPagar = {
   Bordero: string;
 };
 
+export type consultaTituloMxmResponse = {
+  Fornecedor: string;
+  NumeroTitulo: string;
+  ValorDoTitulo: string;
+  ValordoIRRF: string;
+  ValordoINSS: string;
+  ValordoISS: string;
+  ValordoPIS: string;
+  ValordoCOFINS: string;
+  ValordoCIDE: string;
+  ValordaContribuicaoSocial: string;
+  INSSI: string;
+  [key: string]: unknown;
+}
+
 export type MxmBaixaInput = {
   mxm_id: string;
   numero_documento: string;
@@ -135,6 +150,48 @@ export async function consultarFornecedorMxm(cnpjCpf: string): Promise<{ codigo:
       codigo: responseData?.Data[0]?.Codigo ?? "",
       nome: responseData?.Data[0]?.Nome ?? "",
     }
+  } catch (error) {
+    logger.error("Erro ao conectar com MXM", { error: error instanceof Error ? error.message : String(error) });
+    throw new Error(`Erro ao conectar com MXM: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export async function consultarTituloMXM(numeroNota: String, cnpjCpf: String): Promise<consultaTituloMxmResponse | null> {
+  const { baseUrl, username, password, environment } = getMxmConfig();
+
+  const url = `${baseUrl}/webmanager/api/InterfacedoContasPagarReceber/ConsultaTituloPagar`;
+  const body = {
+    "AutheticationToken": {
+      "Username": username,
+      "Password": password,
+      "EnvironmentName": environment
+    },
+    "Data": {
+      "NumeroTitulo": numeroNota,
+      "Fornecedor": cnpjCpf,
+    }
+  };
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("Erro ao consultar título no MXM", { status: response.status, statusText: response.statusText, errorText });
+      throw new Error(`Erro ao consultar título no MXM: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    logger.info("Resposta recebida do MXM", { data: responseData });
+
+    return responseData?.Data?.InterfacedoContasPagarReceber ?? null;
   } catch (error) {
     logger.error("Erro ao conectar com MXM", { error: error instanceof Error ? error.message : String(error) });
     throw new Error(`Erro ao conectar com MXM: ${error instanceof Error ? error.message : String(error)}`);

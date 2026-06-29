@@ -1,5 +1,5 @@
-export { listarTituloPagar, consultarTituloMxm } from "@adapters/mxm";
-export type { MxmTituloPagar } from "@adapters/mxm";
+export { listarTituloPagar, consultarTituloMxm, consultarTituloMXM } from "@adapters/mxm";
+export type { MxmTituloPagar, consultaTituloMxmResponse } from "@adapters/mxm";
 
 export { buscarIssueJira } from "@adapters/jira";
 export type { JiraIssue, JiraCampoUpdate, JiraStatusUpdate } from "@adapters/jira";

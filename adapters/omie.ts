@@ -4,6 +4,7 @@ export type OmieContaPagarInput = {
   valor: number;
   data_vencimento: string;
   razao_social?: string;
+  valor_centavos?: number;
 };
 
 export type OmieContaPagarResponse = {
@@ -20,6 +21,7 @@ export type OmieConsultaInput = {
 
 export type OmieAlteracaoInput = {
   codigo_integracao: string;
+  codigo_lancamento_omie?: number;
   data_emissao?: string;
   data_vencimento?: string;
   codigo_categoria?: string;
@@ -122,8 +124,8 @@ export async function criarContaPagarOmie(
         valor_documento: valor,
         data_vencimento: data_vencimento,
         data_previsao: data_vencimento,
-        codigo_lancamento_integracao: `${numero_documento}_${cnpj_cpf}_${valor}`,
-        id_conta_corrente: 6917718230,
+        codigo_lancamento_integracao: `${numero_documento}_${cnpj_cpf}_${input.valor_centavos}`,
+        id_conta_corrente: Number(process.env.OMIE_ID_CONTA_CORRENTE ?? "6917718230"),
         observacao: "Criação automática via integração MXM-OMIE, a ser atualizado pelo Jira posteriormente.",
       },
     ],
@@ -145,9 +147,9 @@ export async function criarContaPagarOmie(
     logger.info("Conta a pagar criada no Omie", { data: responseData });
 
     return {
-      omie_id: responseData?.[0]?.codigo_lancamento_omie?.toString() ?? "",
-      codigo_lancamento_omie: responseData?.[0]?.codigo_lancamento_omie ?? 0,
-      status: responseData?.[0]?.descricao_status ?? "desconhecido",
+      omie_id: responseData?.codigo_lancamento_omie?.toString() ?? "",
+      codigo_lancamento_omie: responseData?.codigo_lancamento_omie ?? 0,
+      status: responseData?.descricao_status ?? "desconhecido",
     };
   } catch (error) {
     logger.error("Erro ao criar conta a pagar no Omie", { error: error instanceof Error ? error.message : String(error) });
@@ -279,8 +281,11 @@ export async function alterarContaPagarOmie(
     param: [
       {
         codigo_lancamento_integracao: input.codigo_integracao,
+        //codigo_lancamento_omie: input.codigo_lancamento_omie,
+        id_conta_corrente: Number(process.env.OMIE_ID_CONTA_CORRENTE ?? "6917718230"),
         data_vencimento: input.data_vencimento,
         data_previsao: input.data_vencimento,
+        valor_documento: input.valor,
         numero_pedido: input.numero_pedido,
         numero_documento: input.numero_documento ?? undefined,
         cnab_integracao_bancaria: input.forma_de_pagamento,
@@ -320,4 +325,52 @@ export async function alterarContaPagarOmie(
 export async function listarContasPagarOmie(filtros?: Record<string, unknown>): Promise<OmieContaPagarResponse[]> {
   // TODO: implementar listagem no Omie para reconciliação
   throw new Error("TODO: listarContasPagarOmie não implementado");
+}
+
+export async function anexarDocumentoOmie(
+  omieId: number,
+  filename: string,
+  fileBuffer: Buffer
+): Promise<void> {
+  const urlBase = process.env.OMIE_BASE_URL;
+  const appKey = process.env.OMIE_APP_KEY;
+  const appSecret = process.env.OMIE_APP_SECRET;
+
+  logger.info("Anexando documento na conta a pagar do Omie", { omieId, filename });
+
+  const crypto = await import("node:crypto");
+  const md5 = crypto.createHash("md5").update(fileBuffer).digest("hex");
+  const base64 = fileBuffer.toString("base64");
+  const cCodIntAnexo = Array.from({ length: 15 }, () => Math.floor(Math.random() * 10)).join("");
+
+  const url = `${urlBase}/api/v1/geral/anexos/`;
+  const body = {
+    call: "IncluirAnexo",
+    app_key: appKey,
+    app_secret: appSecret,
+    param: [
+      {
+        cCodIntAnexo,
+        cTabela: "conta-pagar",
+        nId: omieId,
+        cArquivo: base64,
+        cMd5: md5,
+        cNomeArquivo: filename,
+      },
+    ],
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Erro ao anexar documento no Omie. Status: ${response.status}. Body: ${errorBody.substring(0, 300)}`);
+  }
+
+  const responseData = await response.json();
+  logger.info("Documento anexado com sucesso no Omie", { omieId, filename, response: responseData });
 }

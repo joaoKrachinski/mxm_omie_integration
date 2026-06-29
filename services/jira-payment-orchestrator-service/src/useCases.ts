@@ -13,6 +13,10 @@ import {
   atualizarStatusJira,
   adicionarComentarioJira,
   alterarContaPagarOmie,
+  anexarDocumentoOmie,
+  buscarAnexosJira,
+  downloadAnexoJira,
+  consultarNotaQive,
   enviarAlertaSlack,
   consultarPlanilha,
   buscarEmailUsuarioJira,
@@ -21,16 +25,25 @@ import {
   OmieAlteracaoInput,
 } from "./adapters";
 import {
-  findDocument,
   findDocumentByCnpjNumero,
   findByJiraId,
   updateDocument,
 } from "@database";
-import { normalizeCpfCnpj, toIsoDate } from "@shared/utils";
+import { normalizeCpfCnpj, toIsoDate, toOmieDate } from "@shared/utils";
 import { createLogger } from "@shared/logger";
 import { Pagamento } from "@shared/types";
 
 const logger = createLogger("jira-payment-orchestrator-service");
+
+function extrairDadosFornecedor(fornecedor: string): { cnpj: string; razao_social: string } | null {
+  // Usa sempre o ÚLTIMO par de parênteses para o CNPJ
+  const ultimoAbre = fornecedor.lastIndexOf("(");
+  const ultimoFecha = fornecedor.lastIndexOf(")");
+  if (ultimoAbre === -1 || ultimoFecha === -1 || ultimoFecha < ultimoAbre) return null;
+  const cnpj = fornecedor.substring(ultimoAbre + 1, ultimoFecha).trim();
+  const razao_social = fornecedor.substring(0, ultimoAbre).trim();
+  return { cnpj, razao_social };
+}
 
 const S = {
   VERIFICANDO_CADASTRO:  () => process.env.JIRA_STATUS_VERIFICANDO_CADASTRO  ?? "Verificando Cadastro De Fornecedor",
@@ -55,7 +68,7 @@ export async function approverJira(
   let conjunto_de_aprovadores: Awaited<ReturnType<typeof consultarPlanilha>> = [];
   let regras_de_negocio: Awaited<ReturnType<typeof consultarPlanilha>> = [];
 
-  logger.info("Atualizando status para \"Verificando Cadastro Fornecedor\"", { jira_id: input.jira_id });
+  logger.info(`Atualizando status para ${S.VERIFICANDO_CADASTRO()}`, { jira_id: input.jira_id });
   await atualizarStatusJira({ jira_id: input.jira_id, status_alvo: S.VERIFICANDO_CADASTRO() });
 
   try {
@@ -72,6 +85,25 @@ export async function approverJira(
       error: String(sheetErr),
     });
   }
+  // ── Atualizar CNPJ e Razão Social no Jira (customfield_10180 / 10179) ─────
+  const dadosFornecedor = extrairDadosFornecedor(input.fornecedor ?? "");
+  if (dadosFornecedor) {
+    logger.info("Atualizando CNPJ e razão social no Jira", {
+      jira_id: input.jira_id,
+      cnpj: dadosFornecedor.cnpj,
+      razao_social: dadosFornecedor.razao_social,
+    });
+    await Promise.allSettled([
+      atualizarCampoJira({ jira_id: input.jira_id, campo: "customfield_10180", valor: dadosFornecedor.cnpj }),
+      atualizarCampoJira({ jira_id: input.jira_id, campo: "customfield_10179", valor: dadosFornecedor.razao_social }),
+    ]);
+  } else {
+    logger.warn("Não foi possível extrair CNPJ/razão social do fornecedor", {
+      jira_id: input.jira_id,
+      fornecedor: input.fornecedor,
+    });
+  }
+
   const squad_responsavel = input.squad;
   logger.info("Squad responsável extraído do Jira", { squad_responsavel });
   let aprovadores_atuais = {};
@@ -280,17 +312,65 @@ export async function verifyInvoiceJira(
   }
 
   const codigo_ntc = input.codigo_ntc;
-  
+
+  // ── Verificação Qive no BigQuery ──────────────────────────────────────────
+  const cnpjQive = normalizeCpfCnpj(input.cnpj_cpf ?? "");
+  const numeroQive = input.numero_documento ?? "";
+
+  try {
+    const notaQive = await consultarNotaQive(cnpjQive, numeroQive);
+    const statusAutorizado = ["autorizada", "autorizado"].includes(
+      notaQive?.document_status?.toLowerCase().trim() ?? ""
+    );
+
+    logger.info("Resultado da verificação Qive (BigQuery)", {
+      correlation_id: correlationId,
+      jira_id: input.jira_id,
+      cnpj: cnpjQive,
+      numero_nota: numeroQive,
+      nfe_status: notaQive?.document_status ?? "não encontrada",
+      autorizado: statusAutorizado,
+    });
+
+    await atualizarCampoJira({
+      jira_id: input.jira_id,
+      campo: "customfield_15143",
+      valor: { value: statusAutorizado ? "true" : "false" },
+    });
+  } catch (bqErr) {
+    const mensagemErro = bqErr instanceof Error ? bqErr.message : String(bqErr);
+    logger.warn("Falha na verificação Qive — marcando como False e alertando canal", {
+      correlation_id: correlationId,
+      jira_id: input.jira_id,
+      error: mensagemErro,
+    });
+
+    await atualizarCampoJira({
+      jira_id: input.jira_id,
+      campo: "customfield_15143",
+      valor: { value: "false" },
+    }).catch((e) => logger.warn("Falha ao atualizar customfield_15143", { error: String(e) }));
+
+    enviarAlertaSlack({
+      type: "channel",
+      id: process.env.SLACK_ALERT_CHANNEL || process.env.SLACK_DEVELOPMENT_CHANNEL || "",
+      message: [
+        `⚠️ Falha na verificação Qive (BigQuery) para o ticket <https://insiderstore.atlassian.net/browse/${input.jira_id}|${input.jira_id}>`,
+        `*CNPJ*: ${cnpjQive}`,
+        `*Número da nota*: ${numeroQive}`,
+        `*Erro*: ${mensagemErro}`,
+      ].join("\n"),
+    });
+  }
+
   if (!codigo_ntc) {
     // Solicitação direta do SPAG, não produtivo
-    const fornecedor = input.fornecedor ?? "desconecido";
-    const cnpj = fornecedor.split("(")[1]?.split(")")[0]
-    const cnpjAjustado = cnpj ? normalizeCpfCnpj(cnpj) : "desconecido";
+    const cnpjAjustado = normalizeCpfCnpj(input.cnpj_cpf ?? "desconecido");
     const valor = input.valor ?? 0;
     const valorCentavos = Math.round((valor || 0) * 100);
     const numero_documento = input.numero_documento ?? "desconecido";
 
-    const existente = await findDocument(numero_documento, cnpjAjustado, valorCentavos);
+    const existente = await findDocumentByCnpjNumero(cnpjAjustado, numero_documento);
     
     if (existente) {
       logger.info("Documento encontrado para verifyInvoiceJira", {
@@ -342,9 +422,9 @@ export async function verifyInvoiceJira(
     const cnpjAjustado = cnpjCpf ? normalizeCpfCnpj(cnpjCpf) : "desconecido";
     const valor = input.valor ?? 0;
     const valorCentavos = Math.round((valor || 0) * 100);
-    const numero_documento = input.numero_documento_producao ?? "desconecido";
-    const existente = await findDocument(numero_documento, cnpjAjustado, valorCentavos);
-    
+    const numero_documento = input.numero_documento ?? "desconecido";
+    const existente = await findDocumentByCnpjNumero(cnpjAjustado, numero_documento);
+
     if (existente) {
       logger.info("Documento encontrado para verifyInvoiceJira", {
         correlation_id: correlationId,
@@ -355,6 +435,64 @@ export async function verifyInvoiceJira(
       });
 
       atualizarCampoJira({ jira_id: input.jira_id, campo: "customfield_15098", valor: { value: "true" } });
+
+      // ── Análise de tesouraria (prazo de pagamento) — apenas NTC ──────────
+      try {
+        let regrasNtc: Awaited<ReturnType<typeof consultarPlanilha>> = [];
+        try {
+          regrasNtc = await consultarPlanilha({
+            spreadsheetId: "1pcwoO-CXu5HPL-_19my3Vh2oy5BIOrZTr8yGTO_z6Zs",
+            tabName: "valoresAlcada",
+          });
+        } catch { /* segue com default de 3 dias */ }
+
+        const regraRow = regrasNtc.find(
+          (r) => r["chave"] === "pagamento_minimo (dias)" || r["Chave"] === "pagamento_minimo (dias)"
+        );
+        const minimosDias = parseInt(regraRow?.["valor"] ?? regraRow?.["Valor"] ?? "3", 10);
+
+        const vencimentoMs = parseDateToMs(input.vencimento ?? "");
+        const hojeMs = new Date();
+        hojeMs.setHours(0, 0, 0, 0);
+        const diffDias = Math.floor((vencimentoMs - hojeMs.getTime()) / (1000 * 60 * 60 * 24));
+        const prazoValido = !isNaN(diffDias) && diffDias >= minimosDias;
+
+        logger.info("Análise de tesouraria (NTC)", {
+          correlation_id: correlationId,
+          jira_id: input.jira_id,
+          vencimento: input.vencimento,
+          dias_restantes: diffDias,
+          minimos_dias: minimosDias,
+          aprovado: prazoValido,
+        });
+
+        if (prazoValido) {
+          atualizarCampoJira({ jira_id: input.jira_id, campo: "customfield_15144", valor: { value: "True" } });
+        } else {
+          const motivo = isNaN(diffDias)
+            ? "Data de vencimento não informada ou inválida."
+            : `Data de vencimento em ${diffDias} dia(s), abaixo do mínimo de ${minimosDias} dia(s).`;
+
+          await atualizarCampoJira({
+            jira_id: input.jira_id,
+            campo: "customfield_15144",
+            valor: { value: "False" },
+          }).catch((e) => logger.warn("Falha ao atualizar customfield_15144", { error: String(e) }));
+
+          await adicionarComentarioJira(
+            input.jira_id,
+            `⛔ Validação de tesouraria reprovada.\n\n${motivo}\n\nO ticket permanecerá em análise até que a data de vencimento seja corrigida.`,
+            true
+          ).catch((e) => logger.warn("Falha ao adicionar comentário de tesouraria", { error: String(e) }));
+        }
+      } catch (tesErr) {
+        logger.warn("Falha na análise de tesouraria (NTC) — ignorando", {
+          correlation_id: correlationId,
+          jira_id: input.jira_id,
+          error: String(tesErr),
+        });
+      }
+
       return {
         jira_id: input.jira_id,
         acao: "verify_invoice",
@@ -400,18 +538,16 @@ export async function updateOmieJira(
 ): Promise<OrchestratorResult> {
   logger.info("updateOmieJira iniciado", { correlation_id: correlationId, jira_id: input.jira_id });
 
+  try {
+
   const codigo_ntc = input.codigo_ntc ?? "desconecido";
   const valor = input.valor ?? 0;
   const valorCentavos = Math.round((valor || 0) * 100);
 
   // ── Resolver chave de idempotência conforme tipo de solicitação ───────────
   const fornecedor = input.fornecedor ?? "desconecido";
-  const docIdempotencia = codigo_ntc !== "desconecido"
-    ? (input.numero_documento_producao ?? "desconecido")
-    : (input.numero_documento ?? "desconecido");
-  const cnpjIdempotencia = codigo_ntc !== "desconecido"
-    ? normalizeCpfCnpj(input.cnpj_cpf ?? "desconecido")
-    : normalizeCpfCnpj(fornecedor.split("(")[1]?.split(")")[0] ?? "desconecido");
+  const docIdempotencia = input.numero_documento ?? "desconecido";
+  const cnpjIdempotencia = normalizeCpfCnpj(input.cnpj_cpf ?? "desconecido");
 
   // ── Verificar idempotência: pular se já está agendado ────────────────────
   const registroExistente = await findDocumentByCnpjNumero(cnpjIdempotencia, docIdempotencia);
@@ -433,8 +569,8 @@ export async function updateOmieJira(
   const numero_documento = input.numero_documento ?? "desconecido";
   const cnpjCpf = normalizeCpfCnpj(input.cnpj_cpf ?? "desconecido");
   const tipo_nota = input.tipo_nota ?? "desconecido";
-  const data_emissao = input.data_emissao ?? "desconecido";
-  const data_vencimento = input.vencimento ?? "desconecido";
+  const data_emissao = input.data_emissao ? toOmieDate(input.data_emissao) : "desconecido";
+  const data_vencimento = input.vencimento ? toOmieDate(input.vencimento) : "desconecido";
   const metodo_de_pagamento = input.metodo_de_pagamento ?? "desconecido";
   const linha_digitavel_boleto = input.linha_digitavel_boleto ?? "desconecido";
   const squad = input.squad ?? "desconecido";
@@ -443,11 +579,23 @@ export async function updateOmieJira(
   let conta_bancaria = input.conta ?? "desconecido";
   let agencia_bancaria = input.agencia ?? "desconecido";
   let banco = input.banco ?? "desconecido";
-  const numero_documento_producao = input.numero_documento_producao ?? "desconecido";
+  const numero_documento_producao = input.numero_documento ?? "desconecido";
   let tipo_de_pagamento = input.tipo_de_pagamento ?? "desconecido";
   const centro_de_custo = input.centro_de_custo ?? "desconecido";
   const jira_key = input.jira_id;
   const alteracaoInput = {} as OmieAlteracaoInput;
+
+  // Preencher omie_id do MongoDB quando disponível
+  const omieIdNum = parseInt(registroExistente?.omie_id ?? "0", 10);
+  logger.info("omie_id do MongoDB", { correlation_id: correlationId, jira_id: input.jira_id, omie_id: omieIdNum });
+  if (omieIdNum > 0) {
+    alteracaoInput.codigo_lancamento_omie = omieIdNum;
+    logger.info("omie_id encontrado no MongoDB — adicionando ao alteracaoInput", {
+      correlation_id: correlationId,
+      jira_id: input.jira_id,
+      codigo_lancamento_omie: omieIdNum,
+    });
+  }
 
 
   if (codigo_ntc === "desconecido") {
@@ -461,8 +609,8 @@ export async function updateOmieJira(
     });
     
     let dados_bancarios_encontrados = {};
-    nome_fornecedor = fornecedor.split("(")[0].trim() || nome_fornecedor;
-    const cnpjAjustado = normalizeCpfCnpj(fornecedor.split("(")[1]?.split(")")[0] ?? "desconecido");
+    nome_fornecedor = input.nome_fornecedor || fornecedor.split("(")[0].trim() || nome_fornecedor;
+    const cnpjAjustado = normalizeCpfCnpj(input.cnpj_cpf ?? "desconecido");
     for (const row of dados_bancarios_fornecedor) {    
       if(normalizeCpfCnpj(row['[SPAG] CNPJ do fornecedor'] ?? "") === cnpjAjustado) {
         dados_bancarios_encontrados = row;
@@ -501,7 +649,7 @@ export async function updateOmieJira(
     let cnab_integracao = {};
     if (metodo_de_pagamento === "Boleto") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "BOL",
+        codigo_forma_pagamento: "BOL",
         codigo_barras_boleto: linha_digitavel_boleto,
       }
       observacao = [
@@ -518,8 +666,8 @@ export async function updateOmieJira(
       ].join("\n");
     } else if (metodo_de_pagamento === "Pix") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "TRA",
-        finalidade_transferencia: "01.03",
+        codigo_forma_pagamento: "TRA",
+        finalidade_transferencia: "01.3",
         banco_transferencia: '341',
         agencia_transferencia: '0845',
         conta_corrente_transferencia: '22961-6',
@@ -538,8 +686,8 @@ export async function updateOmieJira(
       ].join("\n");
     } else if (metodo_de_pagamento === "Transferência Bancária") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "TRA",
-        finalidade_transferencia: "01.04",
+        codigo_forma_pagamento: "TRA",
+        finalidade_transferencia: "01.4",
         banco_transferencia: numero_banco,
         agencia_transferencia: agencia_bancaria,
         conta_corrente_transferencia: conta_bancaria,
@@ -570,8 +718,8 @@ export async function updateOmieJira(
 
     tipo_de_pagamento = fornecedor.split("-")[1]?.trim() || tipo_de_pagamento;
     const tipos_de_pagamento_omie = await consultarPlanilha({
-      spreadsheetId: "1pcwoO-CXu5HPL-_19my3Vh2oy5BIOrZTr8yGTO_z6Zs", 
-      tabName: "relacaoOmieTipoDePagamento" 
+      spreadsheetId: "174bEqbbMCE3TQVFT1C6zTt0acgRMyciUwEI5EQZWbEU",
+      tabName: "relacaoOmieTipoDePagamento"
     });
     let codigo_omie = "";
     for (const row of tipos_de_pagamento_omie) {
@@ -584,8 +732,8 @@ export async function updateOmieJira(
     alteracaoInput.codigo_categoria = codigo_omie;
 
     const departamentos_omie = await consultarPlanilha({
-      spreadsheetId: "1pcwoO-CXu5HPL-_19my3Vh2oy5BIOrZTr8yGTO_z6Zs", 
-      tabName: "departamentos_omie" 
+      spreadsheetId: "174bEqbbMCE3TQVFT1C6zTt0acgRMyciUwEI5EQZWbEU",
+      tabName: "departamentos_omie"
     });
     let codigo_centro_custo_omie = "";
     for (const row of departamentos_omie) {
@@ -635,7 +783,7 @@ export async function updateOmieJira(
     let cnab_integracao = {};
     if (metodo_de_pagamento === "Boleto") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "BOL",
+        codigo_forma_pagamento: "BOL",
         codigo_barras_boleto: linha_digitavel_boleto,
       }
       observacao = [
@@ -652,8 +800,8 @@ export async function updateOmieJira(
       ].join("\n");
     } else if (metodo_de_pagamento === "Pix") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "TRA",
-        finalidade_transferencia: "01.03",
+        codigo_forma_pagamento: "TRA",
+        finalidade_transferencia: "01.3",
         banco_transferencia: '341',
         agencia_transferencia: '0845',
         conta_corrente_transferencia: '22961-6',
@@ -672,8 +820,8 @@ export async function updateOmieJira(
       ].join("\n");
     } else if (metodo_de_pagamento === "Transferência Bancária") {
       cnab_integracao = {
-        codigo_forma_de_pagamento: "TRA",
-        finalidade_transferencia: "01.04",
+        codigo_forma_pagamento: "TRA",
+        finalidade_transferencia: "01.4",
         banco_transferencia: numero_banco,
         agencia_transferencia: agencia_bancaria,
         conta_corrente_transferencia: conta_bancaria,
@@ -703,50 +851,45 @@ export async function updateOmieJira(
     alteracaoInput.forma_de_pagamento = cnab_integracao;
 
     let codigo_grupo_pagamento = "";
+    let codigo_centro_custo_omie = "";
     if (tipo_de_pagamento == "Confecção") {
-      codigo_grupo_pagamento = "100001"
+      codigo_grupo_pagamento = "2.01.03"
+      codigo_centro_custo_omie = "6917704515"
     } else if (tipo_de_pagamento == "Matéria - Prima Principal") {
-      codigo_grupo_pagamento = "100001"
+      codigo_grupo_pagamento = "2.01.01"
+      codigo_centro_custo_omie = "6917704515"
 
     } else if (tipo_de_pagamento == "Fretes e Carretos (envio para clientes)") {
-      codigo_grupo_pagamento = "100069"
-
+      codigo_grupo_pagamento = "2.11.97"
+      codigo_centro_custo_omie = "6917704501"
     } else if (tipo_de_pagamento == "Fretes Internos de Produção") {
-      codigo_grupo_pagamento = "100069"
+      codigo_grupo_pagamento = "2.01.04"
+      codigo_centro_custo_omie = "6917704501"
 
     } else if (tipo_de_pagamento == "Outros CMV") {
-      codigo_grupo_pagamento = "100125"
+      codigo_grupo_pagamento = "2.01.99"
+      codigo_centro_custo_omie = "6917704501"
 
     } else if (tipo_de_pagamento == "Insumos") {
-      codigo_grupo_pagamento = "100072"
+      codigo_grupo_pagamento = "2.01.02"
+      codigo_centro_custo_omie = "6917704501"
 
     } else {
-      codigo_grupo_pagamento = "100076"
+      codigo_grupo_pagamento = "2.02.02"
+      codigo_centro_custo_omie = "6917704981"
     }
     
     
     
 
     alteracaoInput.codigo_categoria = codigo_grupo_pagamento;
-
-
-    let codigo_centro_custo_omie = "";
-    if (centro_de_custo === "Produção") {
-      codigo_centro_custo_omie = "1205001";
-    } else if (centro_de_custo === "Logística") {
-      codigo_centro_custo_omie = "1203001";
-    } else {
-      codigo_centro_custo_omie = "1102001"; //influs
-    }
-  
-
     alteracaoInput.codigo_centro_custo = codigo_centro_custo_omie;
 
   }
 
   // ── Chamar Omie e tratar sucesso/erro ────────────────────────────────────
   try {
-    logger.info("Chamando alterarContaPagarOmie", { correlation_id: correlationId, jira_id: input.jira_id });
+    logger.info("Chamando alterarContaPagarOmie", { correlation_id: correlationId, jira_id: input.jira_id, alteracaoInput });
     await alterarContaPagarOmie(alteracaoInput);
 
     logger.info("Omie atualizado com sucesso — atualizando MongoDB e transitando Jira", {
@@ -759,6 +902,45 @@ export async function updateOmieJira(
       status: "agendado_pagamento",
       jira_id: input.jira_id,
     }).catch((e) => logger.warn("Falha ao atualizar status no MongoDB", { error: String(e) }));
+
+    // ── Anexar documentos do Jira no Omie ────────────────────────────────────
+    try {
+      const anexos = await buscarAnexosJira(input.jira_id);
+      const anexosFiltrados = anexos.filter(
+        (a) => !a.filename.toLowerCase().endsWith(".json")
+      );
+
+      logger.info("Anexos encontrados no Jira", {
+        correlation_id: correlationId,
+        jira_id: input.jira_id,
+        total: anexos.length,
+        a_enviar: anexosFiltrados.length,
+      });
+
+      const omieIdNum = parseInt(registroExistente?.omie_id ?? "0", 10);
+      for (const anexo of anexosFiltrados) {
+        try {
+          const buffer = await downloadAnexoJira(anexo.content);
+          await anexarDocumentoOmie(omieIdNum, anexo.filename, buffer);
+          logger.info("Anexo enviado ao Omie", {
+            correlation_id: correlationId,
+            filename: anexo.filename,
+          });
+        } catch (anexoErr) {
+          logger.warn("Falha ao enviar anexo ao Omie — ignorando", {
+            correlation_id: correlationId,
+            filename: anexo.filename,
+            error: String(anexoErr),
+          });
+        }
+      }
+    } catch (anexosErr) {
+      logger.warn("Falha ao buscar anexos do Jira — prosseguindo sem eles", {
+        correlation_id: correlationId,
+        jira_id: input.jira_id,
+        error: String(anexosErr),
+      });
+    }
 
     await atualizarStatusJira({ jira_id: input.jira_id, status_alvo: S.AGUARDANDO_PAGAMENTO() });
 
@@ -804,6 +986,32 @@ export async function updateOmieJira(
       acao: "update_omie",
       status: "erro",
       mensagem: `Erro ao atualizar Omie: ${mensagemErro}`,
+    };
+  }
+
+  } catch (unexpectedErr) {
+    const mensagem = unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr);
+
+    logger.error("Erro inesperado em updateOmieJira", {
+      correlation_id: correlationId,
+      jira_id: input.jira_id,
+      error: mensagem,
+    });
+
+    await adicionarComentarioJira(
+      input.jira_id,
+      `🚨 Erro inesperado durante o agendamento no Omie.\n\nDetalhes: ${mensagem}`,
+      true
+    ).catch((e) => logger.warn("Falha ao adicionar comentário de erro no Jira", { error: String(e) }));
+
+    await atualizarStatusJira({ jira_id: input.jira_id, status_alvo: S.AGENDAMENTO_MANUAL() })
+      .catch((e) => logger.warn("Falha ao transicionar para Agendamento Manual", { error: String(e) }));
+
+    return {
+      jira_id: input.jira_id,
+      acao: "update_omie",
+      status: "erro",
+      mensagem: `Erro inesperado: ${mensagem}`,
     };
   }
 }
@@ -876,7 +1084,7 @@ export async function validarTesouraria(
 
   if (prazoValido) {
     // ── Prazo OK ──────────────────────────────────────────────────────────
-    logger.info("Prazo válido — atualizando customfield_15144 para True", {
+    logger.info("Prazo válido — atualizando customfield_15144 para true", {
       correlation_id: correlationId,
       jira_id: input.jira_id,
       dias_restantes: diffDias,
@@ -885,7 +1093,7 @@ export async function validarTesouraria(
     await atualizarCampoJira({
       jira_id: input.jira_id,
       campo: "customfield_15144",
-      valor: { value: "True" },
+      valor: { value: "true" },
     });
 
     return {
@@ -912,7 +1120,7 @@ export async function validarTesouraria(
   await atualizarCampoJira({
     jira_id: input.jira_id,
     campo: "customfield_15144",
-    valor: { value: "False" },
+    valor: { value: "false" },
   }).catch((e) => logger.warn("Falha ao atualizar customfield_15144", { error: String(e) }));
 
   // Comentário interno no Jira
@@ -975,7 +1183,7 @@ export async function reprocessJira(
     "customfield_10180", // cnpj_do_fornecedor
     "customfield_12563", "customfield_12562", "customfield_12416",
     "customfield_12425", "customfield_12564", "customfield_12566", "customfield_12565",
-    "customfield_15100", "customfield_15101", "customfield_15145",
+    "customfield_15100", "customfield_15101", "customfield_15143", "customfield_15145",
   ]);
 
   logger.info("[REPROCESS] Tickets encontrados", { correlation_id: correlationId, total: issues.length });
@@ -985,11 +1193,7 @@ export async function reprocessJira(
       const issueData = mapJiraPayload({ issue: { key: issue.key, fields: issue.fields } });
 
       const numero_documento = issueData.numero_documento;
-      const fornecedor = issueData.fornecedor ?? "";
-      const cnpjRaw = fornecedor.includes("(")
-        ? fornecedor.split("(")[1]?.split(")")[0] ?? issueData.cnpj_cpf ?? ""
-        : issueData.cnpj_cpf ?? "";
-      const cnpj = normalizeCpfCnpj(cnpjRaw);
+      const cnpj = normalizeCpfCnpj(issueData.cnpj_cpf ?? "");
       const valorCentavos = Math.round((issueData.valor ?? 0) * 100);
 
       logger.info("[REPROCESS] Verificando ticket no MongoDB", {
@@ -1011,7 +1215,7 @@ export async function reprocessJira(
         continue;
       }
 
-      const existente = await findDocument(numero_documento, cnpj, valorCentavos);
+      const existente = await findDocumentByCnpjNumero(cnpj, numero_documento ?? "");
 
       const forgeCheck = validarCamposForge(issueData);
       if (!forgeCheck.valido) {
@@ -1021,6 +1225,31 @@ export async function reprocessJira(
           motivo: forgeCheck.motivo,
         });
         continue;
+      }
+
+      // ── Verificação Qive (BigQuery) ───────────────────────────────────────
+      try {
+        const notaQive = await consultarNotaQive(cnpj, numero_documento ?? "");
+        const statusAutorizado = ["autorizada", "autorizado"].includes(
+          notaQive?.document_status?.toLowerCase().trim() ?? ""
+        );
+        logger.info("[REPROCESS] Resultado verificação Qive", {
+          correlation_id: correlationId,
+          jira_id: issue.key,
+          document_status: notaQive?.document_status ?? "não encontrada",
+          autorizado: statusAutorizado,
+        });
+        await atualizarCampoJira({
+          jira_id: issue.key,
+          campo: "customfield_15143",
+          valor: { value: statusAutorizado ? "true" : "false" },
+        });
+      } catch (bqErr) {
+        logger.warn("[REPROCESS] Falha na verificação Qive — customfield_15143 não atualizado", {
+          correlation_id: correlationId,
+          jira_id: issue.key,
+          error: String(bqErr),
+        });
       }
 
       if (existente) {
@@ -1033,7 +1262,7 @@ export async function reprocessJira(
         await atualizarCampoJira({
           jira_id: issue.key,
           campo: "customfield_15098",
-          valor: { value: "True" },
+          valor: { value: "true" },
         });
 
         processados++;
@@ -1073,7 +1302,7 @@ const AGENDAMENTO_FIELDS = [
   "customfield_12568", "customfield_11645",
   "customfield_12563", "customfield_12562", "customfield_12416",
   "customfield_12425", "customfield_12564", "customfield_12566", "customfield_12565",
-  "customfield_15100", "customfield_15101", "customfield_15145",
+  "customfield_15100", "customfield_15101", "customfield_15143", "customfield_15145",
   "summary", "status",
 ];
 
